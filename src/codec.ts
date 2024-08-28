@@ -150,8 +150,8 @@ export const union = <T extends RustEnum>(type: T): T => {
     return type
 }
 
-export const enumUnion = <E extends { [key: string]: number | string }, R extends RustSmallInteger>(repr: R, kinds: E): {
-    [K in Exclude<E[keyof E], string>]: {}
+export const enumUnion = <E extends { [key: string | number]: number | string }, R extends RustSmallInteger>(repr: R, kinds: E): {
+    [K in Exclude<E[keyof E], string>]: '()'
 } & {
     repr: R
 } => {
@@ -160,8 +160,17 @@ export const enumUnion = <E extends { [key: string]: number | string }, R extend
     }
     for (const key in Object.keys(kinds)) {
         const kind = kinds[key]
-        if (typeof kind === 'number') {
-            type[kind] = {}
+        console.debug(`kind`, kind)
+        console.debug(`key`, key)
+        console.debug(`typeof key`, typeof key)
+        try {
+            let numberKey = Number.parseInt(key)
+
+            if (typeof numberKey === 'number') {
+                type[numberKey] = '()'
+            }
+        } catch {
+            
         }
     }
     return (type as any)
