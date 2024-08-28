@@ -284,6 +284,8 @@ export class Encoder {
     }
 
     public writeRustType<T extends RustType>(type: T, value: ValueOf<T>) {
+        console.debug(`writeRustType`, type, value)
+        console.debug(`bytes`, this.bytes())
         if (RustType.isNumber(type)) {
             if (typeof value === 'number') {
                 switch (type) {
