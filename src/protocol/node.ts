@@ -1,14 +1,19 @@
-import { Decoder, enumKind, RustType, ValueOf } from "../codec";
+import { Decoder, enumKind, Ok, RustResult, RustType, ValueOf } from "../codec";
 import { ConnectionOptions, newNodeId, newPacket, readPacket } from "./connection";
-import { EdgeMessage, MessageId, TYPE_EDGE_MESSAGE } from "./message";
+import { EdgeError, EdgeErrorClass, TYPE_EDGE_ERROR } from "./edgeResult";
+import { EdgeMessage, MessageId, TYPE_EDGE_MESSAGE, TYPE_U8x16 } from "./message";
 import { N2nAuth, N2NPayloadKind, NodeInfo, NodeKind, TYPE_N2N_AUTH } from "./n2nPacket";
 import { EdgeRequestKind, TYPE_EDGE_REQUEST, edgeRequest } from "./request";
+import { TYPE_RESPONSE } from "./response";
 
 export class Node {
     socket: WebSocket;
     peerAuth?: N2nAuth;
     requestId = 0;
-    pool = new Map<number, (value: any) => void>();
+    channelPool = new Map<number, {
+        resolve(result: ValueOf<RustResult<'Bytes', typeof TYPE_EDGE_ERROR>>): void;
+        reject(error: any): void;
+    }>();
     static connect(options: ConnectionOptions): Node {
         const socket = new WebSocket(options.url);
         socket.binaryType = "arraybuffer";
@@ -43,7 +48,10 @@ export class Node {
                     case N2NPayloadKind.EdgeResponse:
                         {
                             const decoder = new Decoder(payload);
-                            
+                            const response = decoder.readRustType(TYPE_RESPONSE);
+                            const requestId = Number(response.id);
+                            const channel = node.channelPool.get(requestId);
+                            channel?.resolve(response.result);
                         }
                         break;
                     case N2NPayloadKind.EdgeMessage:
@@ -63,14 +71,25 @@ export class Node {
     private nextRequestId() {
         return ++this.requestId;
     }
-    public sendMessage(message: EdgeMessage): Promise<MessageId> {
-        let requestId = this.nextRequestId();
-        let value = edgeRequest(requestId, EdgeRequestKind.SendMessage, message);
-        this.sendPacket(N2NPayloadKind.EdgeRequest, TYPE_EDGE_REQUEST, value);
-        return new Promise<MessageId>((resolve, reject) => {
-            this.pool.set(requestId, (value) => {
-
+    private waitResponse(requestId: number): Promise<ValueOf<RustResult<'Bytes', typeof TYPE_EDGE_ERROR>>> {
+        return new Promise<ValueOf<RustResult<'Bytes', typeof TYPE_EDGE_ERROR>>>((respResolve, respReject) => {
+            this.channelPool.set(requestId, {
+                resolve: respResolve,
+                reject: respReject
             })
         })
+    }
+    public async sendMessage(message: EdgeMessage): Promise<MessageId> {
+        let requestId = this.nextRequestId();
+        let value = edgeRequest(requestId, EdgeRequestKind.SendMessage, message);
+        let waitResponse = this.waitResponse(requestId);
+        this.sendPacket(N2NPayloadKind.EdgeRequest, TYPE_EDGE_REQUEST, value);
+        let response = await waitResponse;
+        if (response.kind !== Ok) {
+            throw new EdgeErrorClass(response.value);
+        } 
+        let id = new Decoder(response.value).readRustType(TYPE_U8x16);
+        return id;
+
     }
 }

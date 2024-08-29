@@ -1,4 +1,4 @@
-import { enumKind, enumUnion, none, option, some, struct, ValueOf, vec } from "../codec"
+import { array, enumKind, enumUnion, none, option, some, struct, ValueOf, vec } from "../codec"
 import { TopicCode } from "./topic"
 
 export enum MessageAckExpectKind {
@@ -113,4 +113,5 @@ export function message<T>(body: T, config: MessageConfig): EdgeMessage {
     }
 }
 
-export type MessageId = string
+export const TYPE_U8x16 = array('u8', 16)
+export type MessageId = ValueOf<typeof TYPE_U8x16>

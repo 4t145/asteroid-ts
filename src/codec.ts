@@ -40,10 +40,14 @@ export type RustSequence = {
     type: RustType;
     lengthType: RustSmallInteger;
 }
+export type RustGenericArray<T extends RustType, N extends number> = {
+    type: T;
+    size: N;
+}
 
 
 export type RustGeneric = (...types: RustType[]) => RustType
-export type RustType = RustPrimitive | RustProdType | RustSumType | RustSequence
+export type RustType = RustPrimitive | RustProdType | RustSumType | RustSequence | RustArray
 
 
 export namespace RustType {
@@ -73,6 +77,9 @@ export namespace RustType {
     }
     export const isSeq = (type: RustType): type is RustSequence => {
         return typeof type === 'object' && 'lengthType' in type
+    }
+    export const isArray = (type: RustType): type is RustArray => {
+        return typeof type === 'object' && 'size' in type && 'type' in type
     }
     export const isProd = (type: RustType): type is RustProdType => {
         return typeof type === 'object' && !isSum(type) && !isSeq(type)
@@ -105,6 +112,7 @@ export type ValueOf<T extends RustType> =
     } :
     T extends [] ? [] :
     T extends [infer A extends RustType, ...infer B extends RustType[]] ? [ValueOf<A>, ...ValueOf<B>] :
+    T extends RustGenericArray<infer E, infer N> ? ValueOf<E>[] & { length: N } :
     never;
 
 export type TypeOf<V> = V extends ValueOf<infer T> ? T : never
@@ -123,7 +131,6 @@ export type RustNumberValue = number
 export type RustBitIntValue = bigint
 export type RustStringValue = string
 export type RustBytesValue = Uint8Array
-
 export type RustResult<T extends RustType, E extends RustType> = {
     0: T,
     1: E,
@@ -179,7 +186,7 @@ export const enumKind = <K extends number>(kind: K) => ({
     kind, value: {}
 })
 export const tuple = <T extends RustType[]>(...types: T): T => types
-
+export const array = <T extends RustType, N extends number>(type: T, size: N): RustGenericArray<T, N> => ({ type, size })
 export const result = <T extends RustType, E extends RustType>(ok: T, err: E): RustResult<T, E> => ({ [Ok]: ok, [Err]: err, repr: 'u8' })
 export const option = <T extends RustType>(type: T): RustOption<T> => ({ [Some]: type, [None]: '()', repr: 'u8' })
 export const struct = <T extends RustStruct>(type: T): T => (type)
@@ -194,7 +201,7 @@ export class Encoder {
             this.buffer = new ArrayBuffer(Encoder.DEFAULT_BUFFER_SIZE);
         } else if (buffer instanceof ArrayBuffer) {
             this.buffer = buffer;
-        }  else if (typeof buffer === 'number') {
+        } else if (typeof buffer === 'number') {
             this.buffer = new ArrayBuffer(buffer);
         } else {
             throw Error(`buffer should be a number or ArrayBuffer, got ${buffer}`)
@@ -353,6 +360,11 @@ export class Encoder {
         } else if (RustType.isTuple(type)) {
             for (let index = 0; index < type.length; index += 1) {
                 this.writeRustType(type[index], (<ValueOf<RustTuple>>value)[index])
+            }
+        } else if (RustType.isArray(type)) {
+            const length = type.size;
+            for (let index = 0; index < length; index += 1) {
+                this.writeRustType(type.type, (<ValueOf<RustArray>>value)[index])
             }
         } else {
             throw Error(`unknown rust type ${type}`)
@@ -515,6 +527,13 @@ export class Decoder {
                 obj[key] = this.readRustType(type[key])
             }
             return <ValueOf<T>>obj
+        } else if (RustType.isArray(type)) {
+            const len = type.size;
+            const arr = Array(len);
+            for (let index = 0; index < len; index += 1) {
+                arr[index] = this.readRustType(type.type)
+            }
+            return <ValueOf<T>>arr
         } else {
             throw Error(`unknown type ${type}`)
 
