@@ -1,6 +1,6 @@
 import { Decoder, enumKind, Ok, RustResult, RustType, ValueOf } from "../codec";
 import { ConnectionOptions, newNodeId, newPacket, readPacket } from "./connection";
-import { EdgeError, EdgeErrorClass, TYPE_EDGE_ERROR } from "./edgeResult";
+import { EdgeError, EdgeErrorClass, TYPE_EDGE_ERROR, TypeEdgeError } from "./edgeResult";
 import { EdgeMessage, MessageId, TYPE_EDGE_MESSAGE, TYPE_U8x16 } from "./message";
 import { N2nAuth, N2NPayloadKind, NodeInfo, NodeKind, TYPE_N2N_AUTH } from "./n2nPacket";
 import { EdgeRequestKind, TYPE_EDGE_REQUEST, edgeRequest } from "./request";
@@ -71,8 +71,8 @@ export class Node {
     private nextRequestId() {
         return ++this.requestId;
     }
-    private waitResponse(requestId: number): Promise<ValueOf<RustResult<'Bytes', typeof TYPE_EDGE_ERROR>>> {
-        return new Promise<ValueOf<RustResult<'Bytes', typeof TYPE_EDGE_ERROR>>>((respResolve, respReject) => {
+    private waitResponse(requestId: number): Promise<ValueOf<RustResult<'Bytes', TypeEdgeError>>> {
+        return new Promise<ValueOf<RustResult<'Bytes', TypeEdgeError>>>((respResolve, respReject) => {
             this.channelPool.set(requestId, {
                 resolve: respResolve,
                 reject: respReject

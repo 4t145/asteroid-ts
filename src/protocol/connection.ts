@@ -38,9 +38,9 @@ export function newNodeId(): [number, number, number, number] {
     ]
 }
 
-export function newPacket<T extends RustType>(kind: N2NPayloadKind, payload: T, value: ValueOf<T>): ArrayBuffer {
+export function newPacket<T extends RustType>(kind: N2NPayloadKind, payloadType: T, value: ValueOf<T>): ArrayBuffer {
     const encoder = new Encoder(512);
-    encoder.writeRustType(payload, value);
+    encoder.writeRustType(payloadType, value);
     const bytes = encoder.bytes();
     const payloadSize = bytes.byteLength;
     const header = <N2nPacketHeader>{

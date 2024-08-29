@@ -9,7 +9,8 @@ export const TYPE_EDGE_ERROR = struct({
     message: option('String'),
     kind: enumUnion('u8', EdgeErrorKind),
 })
-export type EdgeError = ValueOf<typeof TYPE_EDGE_ERROR>;
+export type TypeEdgeError = typeof TYPE_EDGE_ERROR;
+export type EdgeError = ValueOf<TypeEdgeError>;
 
 
 export const edgeResult = <T extends RustType>(type: T): RustResult<T, typeof TYPE_EDGE_ERROR> => result<T, typeof TYPE_EDGE_ERROR>(type, TYPE_EDGE_ERROR)
