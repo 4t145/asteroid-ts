@@ -160,17 +160,14 @@ export const enumUnion = <E extends { [key: string | number]: number | string },
     }
     for (const key in Object.keys(kinds)) {
         const kind = kinds[key]
-        console.debug(`kind`, kind)
-        console.debug(`key`, key)
-        console.debug(`typeof key`, typeof key)
         try {
             let numberKey = Number.parseInt(key)
 
-            if (typeof numberKey === 'number') {
+            if (typeof numberKey === 'number' && typeof kind === 'string') {
                 type[numberKey] = '()'
             }
         } catch {
-            
+
         }
     }
     return (type as any)
@@ -191,8 +188,17 @@ export const vec = <T extends RustType>(type: T): RustGenericSequence<T> => ({ t
 export const map = <K extends RustType, V extends RustType>(key: K, value: V): RustGenericSequence<[K, V]> => (sequence([key, value], 'u32'))
 export const set = <K extends RustType>(type: K) => (sequence(type, 'u32'))
 export class Encoder {
-    constructor(byteLength: number) {
-        this.buffer = new ArrayBuffer(byteLength);
+    static DEFAULT_BUFFER_SIZE = 512;
+    constructor(buffer?: number | ArrayBuffer) {
+        if (buffer === undefined) {
+            this.buffer = new ArrayBuffer(Encoder.DEFAULT_BUFFER_SIZE);
+        } else if (buffer instanceof ArrayBuffer) {
+            this.buffer = buffer;
+        }  else if (typeof buffer === 'number') {
+            this.buffer = new ArrayBuffer(buffer);
+        } else {
+            throw Error(`buffer should be a number or ArrayBuffer, got ${buffer}`)
+        }
         this.view = new DataView(this.buffer);
     }
     private buffer: ArrayBuffer;
@@ -293,8 +299,6 @@ export class Encoder {
     }
 
     public writeRustType<T extends RustType>(type: T, value: ValueOf<T>) {
-        console.debug(`writeRustType`, type, value)
-        console.debug(`bytes`, this.bytes())
         if (RustType.isNumber(type)) {
             if (typeof value === 'number') {
                 switch (type) {
@@ -354,10 +358,25 @@ export class Encoder {
             throw Error(`unknown rust type ${type}`)
         }
     }
+
+    public encodeToBytes<T extends RustType>(type: T, value: ValueOf<T>): ArrayBuffer {
+        this.writeRustType(type, value)
+        const bytes = this.bytes();
+        this.reset();
+        return bytes
+    }
 }
 export class Decoder {
-    constructor(buffer: ArrayBuffer) {
-        this.data = new DataView(buffer);
+    constructor(buffer: ArrayBuffer | DataView | Uint8Array) {
+        if (buffer instanceof ArrayBuffer) {
+            this.data = new DataView(buffer);
+        } else if (buffer instanceof DataView) {
+            this.data = buffer;
+        } else if (buffer instanceof Uint8Array) {
+            this.data = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+        } else {
+            throw Error(`buffer should be a ArrayBuffer, DataView or Uint8Array, got ${buffer}`)
+        }
     }
     private data: DataView;
     private offset: number = 0;
