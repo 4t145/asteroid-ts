@@ -167,6 +167,7 @@ export const enumUnion = <E extends { [key: string | number]: number | string },
     }
     for (const key in Object.keys(kinds)) {
         const kind = kinds[key]
+        console.debug(`key=${key}, kind=${kind}, kinds = ${kinds}`)
         try {
             let numberKey = Number.parseInt(key)
 
@@ -306,6 +307,8 @@ export class Encoder {
     }
 
     public writeRustType<T extends RustType>(type: T, value: ValueOf<T>) {
+        console.debug("type=", type, );
+        console.debug("value=", value, );
         if (RustType.isNumber(type)) {
             if (typeof value === 'number') {
                 switch (type) {

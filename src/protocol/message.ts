@@ -1,4 +1,4 @@
-import { array, enumKind, enumUnion, none, option, some, struct, ValueOf, vec } from "../codec"
+import { array, enumKind, enumUnion, map, none, option, Some, some, struct, ValueOf, vec } from "../codec"
 import { TopicCode } from "./topic"
 
 export enum MessageAckExpectKind {
@@ -23,13 +23,19 @@ export enum MessageTargetKind {
     Available = 2,
     Push = 3,
 }
-const TYPE_UTC = struct({
+
+export enum WaitAckErrorException {
+    MessageDropped = 0,
+    Overflow = 1,
+    NoAvailableTarget = 2,
+}
+export const TYPE_UTC = struct({
     seconds: 'u64',
     nanos: 'u32',
 })
 export type Utc = ValueOf<typeof TYPE_UTC>
 
-const TYPE_MESSAGE_DURABILITY_CONFIG = struct({
+export const TYPE_MESSAGE_DURABILITY_CONFIG = struct({
     expire: TYPE_UTC,
     maxReceiver: option('u32'),
 })
@@ -75,7 +81,7 @@ export type MessageConfig = {
     /**
      * The subjects of the message, at least one subject is required
      */
-    subjects: Subject[],
+    subjects: Exclude<Subject[], []>,
     /**
      * The topic of the message
      */
@@ -83,7 +89,7 @@ export type MessageConfig = {
 }
 
 
-export function message<T>(body: T, config: MessageConfig): EdgeMessage {
+export function newMessage<T>(body: T, config: MessageConfig): EdgeMessage {
     // convert the config to the header
     function fromConfig(config: MessageConfig): EdgeMessageHeader {
         const durability = config.durability ? some({
@@ -115,3 +121,32 @@ export function message<T>(body: T, config: MessageConfig): EdgeMessage {
 
 export const TYPE_U8x16 = array('u8', 16)
 export type MessageId = ValueOf<typeof TYPE_U8x16>
+
+export const TYPE_WAIT_SUCCESS = struct(
+    {
+        status: map(TYPE_U8x16, enumUnion('u8', MessageStatusKind))
+    }
+)
+
+export const TYPE_WAIT_ERROR = struct(
+    {
+        status: map(TYPE_U8x16, enumUnion('u8', MessageStatusKind)),
+        exception: option(enumUnion('u8', WaitAckErrorException))
+    }
+)
+
+export class MessageException extends Error {
+    status: {
+        endpointAddr: ValueOf<typeof TYPE_U8x16>,
+        state: MessageStatusKind
+    }[]
+    exception?: WaitAckErrorException
+    constructor(error: ValueOf<typeof TYPE_WAIT_ERROR>) {
+        super()
+        this.status = error.status.map((e) => ({
+            endpointAddr: e[0],
+            state: e[1].kind
+        }))
+        this.exception = error.exception.kind === Some ? error.exception.value.kind : undefined
+    }
+}

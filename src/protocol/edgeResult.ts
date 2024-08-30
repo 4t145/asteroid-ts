@@ -1,7 +1,8 @@
 import { enumKind, enumUnion, option, result, RustResult, RustType, Some, struct, ValueOf } from "../codec";
 export enum EdgeErrorKind {
     Decode = 0x00,
-    Internal = 0x01,
+    TopicNotFound = 0x02,
+    Internal = 0xf0,
 }
 
 export const TYPE_EDGE_ERROR = struct({

@@ -1,5 +1,5 @@
-import { Encoder, enumKind, enumUnion, struct, tuple, ValueOf } from "../codec";
-import { EdgeMessage, TYPE_EDGE_MESSAGE } from "./message";
+import { Encoder, enumUnion, struct, ValueOf } from "../codec";
+import { TYPE_EDGE_MESSAGE } from "./message";
 export enum EdgeRequestKind {
     SendMessage = 0x10,
     CreateEndpoint = 0x11,
@@ -13,7 +13,7 @@ export const TYPE_EDGE_REQUEST = struct({
     payload: 'Bytes',
 })
 
-export type EdgeRequestType = typeof TYPE_EDGE_MESSAGE
+export type TypeEdgeRequest = typeof TYPE_EDGE_MESSAGE
 
 
 type RequestType<K extends EdgeRequestKind> = K extends EdgeRequestKind.SendMessage ? typeof TYPE_EDGE_MESSAGE : never
