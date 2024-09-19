@@ -1,4 +1,4 @@
-import { EdgeMessage, EdgeMessageHeader, MessageAckExpectKind, MessageTargetKind, Subject, TopicCode } from "./types";
+import { EdgeMessage, EdgeMessageHeader, MessageAckExpectKind, MessageHeader, MessageTargetKind, Subject, TopicCode } from "./types";
 
 
 
@@ -28,7 +28,10 @@ export type MessageConfig = {
     topic: TopicCode,
 }
 
-
+export interface ReceivedMessage {
+    header: MessageHeader;
+    payload: Uint8Array;
+}
 export function newMessage<T>(body: T, config: MessageConfig): EdgeMessage {
     // convert the config to the header
     function fromConfig(config: MessageConfig): EdgeMessageHeader {
@@ -39,47 +42,17 @@ export function newMessage<T>(body: T, config: MessageConfig): EdgeMessage {
             ack_kind,
             target_kind,
             durability,
-            subjects: config.subjects
+            subjects: config.subjects,
+            topic: config.topic
         }
     }
 
     const header = fromConfig(config);
     const json = JSON.stringify(body);
     const payload = new TextEncoder().encode(json);
+    const base64Json = Buffer.from(payload).toString('base64');
     return {
         header,
-        payload
-    }
-}
-
-export const TYPE_U8x16 = array('u8', 16)
-export type MessageId = ValueOf<typeof TYPE_U8x16>
-
-export const TYPE_WAIT_SUCCESS = struct(
-    {
-        status: map(TYPE_U8x16, enumUnion('u8', MessageStatusKind))
-    }
-)
-
-export const TYPE_WAIT_ERROR = struct(
-    {
-        status: map(TYPE_U8x16, enumUnion('u8', MessageStatusKind)),
-        exception: option(enumUnion('u8', WaitAckErrorException))
-    }
-)
-
-export class MessageException extends Error {
-    status: {
-        endpointAddr: ValueOf<typeof TYPE_U8x16>,
-        state: MessageStatusKind
-    }[]
-    exception?: WaitAckErrorException
-    constructor(error: ValueOf<typeof TYPE_WAIT_ERROR>) {
-        super()
-        this.status = error.status.map((e) => ({
-            endpointAddr: e[0],
-            state: e[1].kind
-        }))
-        this.exception = error.exception.kind === Some ? error.exception.value.kind : undefined
+        payload: base64Json
     }
 }

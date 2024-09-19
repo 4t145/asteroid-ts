@@ -13,7 +13,11 @@ export class EdgeErrorClass extends Error {
 export class WaitAckErrorClass extends Error {
     status: Record<EndpointAddr, MessageStatusKind>;
     constructor(error: WaitAckError) {
-        super(error.exception);
+        if (error.exception === null) {
+            super("Ack Error");
+        } else {
+            super(error.exception);
+        }
         this.status = error.status;
     }
 }
