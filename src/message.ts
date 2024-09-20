@@ -1,3 +1,4 @@
+import { Endpoint } from "./endpoint";
 import { EdgeMessage, EdgeMessageHeader, MessageAckExpectKind, MessageHeader, MessageTargetKind, Subject, TopicCode } from "./types";
 
 
@@ -31,6 +32,12 @@ export type MessageConfig = {
 export interface ReceivedMessage {
     header: MessageHeader;
     payload: Uint8Array;
+    received(): Promise<void>;
+    processed(): Promise<void>;
+    failed(): Promise<void>;
+    json<T>(): T;
+    text(): string;
+    endpoint: Endpoint;
 }
 export function newMessage<T>(body: T, config: MessageConfig): EdgeMessage {
     // convert the config to the header

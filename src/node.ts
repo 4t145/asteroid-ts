@@ -1,22 +1,23 @@
 import { Endpoint } from "./endpoint";
 import { EdgeErrorClass, WaitAckErrorClass } from "./error";
 import { ReceivedMessage } from "./message";
-import { EdgeError, EdgeMessage, EdgePayload, EdgeRequest, EdgeResponseEnum, EdgeResult, EndpointAddr, Interest, Message, TopicCode } from "./types";
+import { EdgeError, EdgeMessage, EdgePayload, EdgeRequest, EdgeResponseEnum, EdgeResult, EndpointAddr, Interest, MessageStatusKind, TopicCode } from "./types";
+
 
 export class Node {
-    socket: WebSocket;
-    requestId = 0;
-    responseWaitingPool = new Map<number, {
+    private socket: WebSocket;
+    private requestId = 0;
+    private responseWaitingPool = new Map<number, {
         resolve(result: EdgeResult<EdgeResponseEnum, EdgeError>): void;
         reject(error: any): void;
     }>();
-    openingWaitingPool = new Set<{
+    private openingWaitingPool = new Set<{
         resolve(): void;
         reject(error: any): void;
     }>();
-    alive = false;
-    receivedMessageBuffer: Message[] = [];
-    endpoints = new Map<EndpointAddr, Endpoint>;
+    private alive = false;
+    private endpoints = new Map<EndpointAddr, Endpoint>;
+    private textDecoder = new TextDecoder();
     static connect(options: {
         url: string | URL;
     }): Node {
@@ -46,14 +47,30 @@ export class Node {
                                         const { message, endpoints } = content.content;
                                         for (const ep of endpoints) {
                                             const endpoint = node.endpoints.get(ep);
-
-                                            let decodedMessage = <ReceivedMessage>{
+                                            if (endpoint === undefined) {
+                                                continue;
+                                            }
+                                            let receivedMessage: ReceivedMessage = {
                                                 header: message.header,
-                                                payload: new Uint8Array(Buffer.from(atob(message.payload)))
+                                                payload: new Uint8Array(Buffer.from(atob(message.payload))),
+                                                received: async () => {
+                                                    await node.ackMessage(endpoint, message.header.message_id, MessageStatusKind.Received);
+                                                },
+                                                processed: async () => {
+                                                    await node.ackMessage(endpoint, message.header.message_id, MessageStatusKind.Processed);
+                                                },
+                                                failed: async () => {
+                                                    await node.ackMessage(endpoint, message.header.message_id, MessageStatusKind.Failed);
+                                                },
+                                                json: () => {
+                                                    return JSON.parse(node.textDecoder.decode(receivedMessage.payload));
+                                                },
+                                                text: () => {
+                                                    return node.textDecoder.decode(receivedMessage.payload);
+                                                },
+                                                endpoint
                                             }
-                                            if (endpoint !== undefined) {
-                                                endpoint.receive(decodedMessage);
-                                            }
+                                            endpoint.receive(receivedMessage);
                                         }
 
                                     }
@@ -67,7 +84,6 @@ export class Node {
         }
         socket.onopen = (_evt) => {
             node.alive = true;
-            console.log("socket opened");
             node.openingWaitingPool.forEach((channel) => {
                 channel.resolve();
             })
@@ -80,7 +96,6 @@ export class Node {
     constructor(socket: WebSocket) {
         this.socket = socket;
     }
-
     private sendPayload(payload: EdgePayload) {
         let text = JSON.stringify(payload);
         let binary = new TextEncoder().encode(text);
@@ -112,7 +127,7 @@ export class Node {
     public async createEndpoint(topic: TopicCode, interests: Interest[]): Promise<Endpoint> {
         await this.waitSocketOpen();
         const requestId = this.nextRequestId();
-        const request = <EdgeRequest>{
+        const request: EdgeRequest = {
             seq_id: requestId,
             request: {
                 kind: "EndpointOnline",
@@ -123,7 +138,7 @@ export class Node {
             }
         };
         const waitResponse = this.waitResponse(requestId);
-        this.sendPayload(<EdgePayload>{
+        this.sendPayload({
             "kind": "Request",
             "content": request
         })
@@ -143,10 +158,100 @@ export class Node {
         this.endpoints.set(addr, endpoint);
         return endpoint
     }
+    public async destroyEndpoint(endpoint: Endpoint): Promise<void> {
+        if (!this.alive) {
+            return;
+        }
+        endpoint.closeMessageChannel();
+        const requestId = this.nextRequestId();
+        const request: EdgeRequest = {
+            seq_id: requestId,
+            request: {
+                kind: "EndpointOffline",
+                content: {
+                    endpoint: endpoint.address,
+                    topic_code: endpoint.topic
+                }
+            }
+        };
+        const waitResponse = this.waitResponse(requestId);
+        this.sendPayload({
+            "kind": "Request",
+            "content": request
+        })
+        const response = await waitResponse;
+        if (response.kind !== "Ok") {
+            throw new EdgeErrorClass(response.content);
+        }
+        if (response.content.kind !== "EndpointOffline") {
+            throw new Error(`Unexpected response kind ${response.content.kind}`);
+        }
+        this.endpoints.delete(endpoint.address);
+    }
+    public async updateInterest(endpoint: Endpoint, interests: Interest[]): Promise<void> {
+        if (!this.alive) {
+            return;
+        }
+        const requestId = this.nextRequestId();
+        const request: EdgeRequest = {
+            seq_id: requestId,
+            request: {
+                kind: "EndpointInterest",
+                content: {
+                    endpoint: endpoint.address,
+                    topic_code: endpoint.topic,
+                    interests
+                }
+            }
+        };
+        const waitResponse = this.waitResponse(requestId);
+        this.sendPayload({
+            "kind": "Request",
+            "content": request
+        })
+        const response = await waitResponse;
+        if (response.kind !== "Ok") {
+            throw new EdgeErrorClass(response.content);
+        }
+        if (response.content.kind !== "EndpointInterest") {
+            throw new Error(`Unexpected response kind ${response.content.kind}`);
+        }
+    }
+    public async ackMessage(endpoint: Endpoint, messageId: string, state: MessageStatusKind): Promise<void> {
+        await this.waitSocketOpen();
+        let requestId = this.nextRequestId();
+        let request: EdgeRequest = {
+            seq_id: requestId,
+            request: {
+                kind: "SetState",
+                content: {
+                    topic: endpoint.topic,
+                    update: {
+                        message_id: messageId,
+                        status: {
+                            [endpoint.address]: state
+                        }
+                    }
+                }
+            }
+        };
+        let waitResponse = this.waitResponse(requestId);
+        this.sendPayload({
+            "kind": "Request",
+            "content": request
+        })
+        let response = await waitResponse;
+        if (response.kind !== "Ok") {
+            throw new EdgeErrorClass(response.content);
+        }
+        if (response.content.kind !== "SetState") {
+            throw new Error(`Unexpected response kind ${response.content.kind}`);
+        }
+    }
     public async sendMessage(message: EdgeMessage): Promise<void> {
         await this.waitSocketOpen();
         let requestId = this.nextRequestId();
-        let request = <EdgeRequest>{
+        let request: EdgeRequest = {
             seq_id: requestId,
             request: {
                 kind: "SendMessage",
@@ -154,7 +259,7 @@ export class Node {
             }
         };
         let waitResponse = this.waitResponse(requestId);
-        this.sendPayload(<EdgePayload>{
+        this.sendPayload({
             "kind": "Request",
             "content": request
         })
@@ -170,5 +275,14 @@ export class Node {
             console.error(ackResult);
             throw new WaitAckErrorClass(ackResult.content)
         }
+    }
+    public isAlive(): boolean {
+        return this.alive;
+    }
+    public async close() {
+        await Promise.all(Array.from(this.endpoints.values()).map((endpoint) => {
+            return this.destroyEndpoint(endpoint);
+        }))
+        this.socket.close();
     }
 }
