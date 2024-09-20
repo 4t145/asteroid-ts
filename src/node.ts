@@ -18,6 +18,12 @@ export class Node {
     private alive = false;
     private endpoints = new Map<EndpointAddr, Endpoint>;
     private textDecoder = new TextDecoder();
+
+    /**
+     * Create a new Node by connecting to the given URL
+     * @param options options for the connection
+     * @returns a new Node instance
+     */
     static connect(options: {
         url: string | URL;
     }): Node {
@@ -93,6 +99,12 @@ export class Node {
         }
         return node;
     }
+    /**
+     * create a new Node instance by a given websocket connection
+     * 
+     * It is **recommended** to use `Node.connect` to create a new Node instance
+     * @param socket the underlying websocket connection
+     */
     constructor(socket: WebSocket) {
         this.socket = socket;
     }
@@ -124,6 +136,12 @@ export class Node {
             }
         })
     }
+    /**
+     * create a new endpoint
+     * @param topic topic code
+     * @param interests interests
+     * @returns a new endpoint
+     */
     public async createEndpoint(topic: TopicCode, interests: Interest[]): Promise<Endpoint> {
         await this.waitSocketOpen();
         const requestId = this.nextRequestId();
